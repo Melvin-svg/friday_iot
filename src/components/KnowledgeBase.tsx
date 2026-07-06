@@ -96,8 +96,8 @@ export const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ apiKey, chunks, se
   };
 
   const handleDeleteFile = (fileName: string, fileId: string) => {
-    // Remove chunks related to this file
-    setChunks(prev => prev.filter(c => c.fileName !== fileName));
+    // Remove chunks related to this file using the unique fileId prefix
+    setChunks(prev => prev.filter(c => !c.id.startsWith(`${fileId}_`)));
     // Remove file record
     setFiles(prev => prev.filter(f => f.id !== fileId));
   };

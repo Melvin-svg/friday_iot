@@ -301,8 +301,8 @@ export function useFriday() {
     if (messages.length === 0) return;
     const lastMsg = messages[messages.length - 1];
     
-    // Check if the message is completed and contains a code block
-    if (lastMsg.content && lastMsg.content !== '...') {
+    // Check if the message is from the assistant, completed, and contains a code block
+    if (lastMsg.role === 'model' && lastMsg.content && lastMsg.content !== '...') {
       const extracted = extractCodeBlock(lastMsg.content);
       if (extracted) {
         setGeneratedCode(extracted.code);
