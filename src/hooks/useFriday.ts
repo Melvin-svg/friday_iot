@@ -767,7 +767,7 @@ export function useFriday() {
     }
 
     try {
-      const thinkingId = 'msg_thinking';
+      const thinkingId = 'msg_thinking_' + Math.random().toString(36).substr(2, 9);
       setMessages(prev => [...prev, { id: thinkingId, role: 'model', content: '...', timestamp: '' }]);
       setIsThinking(true); // Feature 3
 
@@ -811,7 +811,8 @@ export function useFriday() {
     } catch (error: any) {
       console.error('Gemini SendMessage Error:', error);
       setIsThinking(false);
-      setMessages(prev => prev.filter(m => m.id !== 'msg_thinking'));
+      // Clean up the specific thinking placeholder
+      setMessages(prev => prev.filter(m => m.id !== 'msg_thinking' && !m.id.startsWith('msg_thinking_')));
       setMessages(prev => [...prev, {
         id: 'msg_' + Math.random().toString(36).substr(2, 9),
         role: 'model',
@@ -879,7 +880,11 @@ export function useFriday() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      const isInputFocused = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+      const isInputFocused = 
+        target.tagName === 'INPUT' || 
+        target.tagName === 'TEXTAREA' || 
+        target.tagName === 'SELECT' || 
+        target.closest('button') !== null;
 
       // Escape: stop speaking
       if (e.key === 'Escape') {

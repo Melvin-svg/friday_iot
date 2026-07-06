@@ -206,21 +206,24 @@ export default function App() {
                   <div className="grid grid-cols-1 gap-1.5 w-full mt-4">
                     <button
                       onClick={() => handleSuggestedPrompt("FRIDAY, write an ESP32 web server script to toggle a pin")}
-                      className="group px-2.5 py-1.5 rounded-lg border border-white/5 bg-slate-900/40 hover:bg-white/5 text-slate-400 hover:text-slate-300 text-left text-[10px] flex items-center justify-between transition-all"
+                      disabled={isThinking}
+                      className="group px-2.5 py-1.5 rounded-lg border border-white/5 bg-slate-900/40 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-slate-300 text-left text-[10px] flex items-center justify-between transition-all"
                     >
                       <span>Write ESP32 LED Web Server C++</span>
                       <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
                     </button>
                     <button
                       onClick={() => handleSuggestedPrompt("FRIDAY, what resistor do I need for a 3.3V LED at 20mA?")}
-                      className="group px-2.5 py-1.5 rounded-lg border border-white/5 bg-slate-900/40 hover:bg-white/5 text-slate-400 hover:text-slate-300 text-left text-[10px] flex items-center justify-between transition-all"
+                      disabled={isThinking}
+                      className="group px-2.5 py-1.5 rounded-lg border border-white/5 bg-slate-900/40 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-slate-300 text-left text-[10px] flex items-center justify-between transition-all"
                     >
                       <span>Calculate LED Resistor (3.3V / 20mA)</span>
                       <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
                     </button>
                     <button
                       onClick={() => handleSuggestedPrompt("FRIDAY, add tasks for building my new ESP32 MQTT weather station")}
-                      className="group px-2.5 py-1.5 rounded-lg border border-white/5 bg-slate-900/40 hover:bg-white/5 text-slate-400 hover:text-slate-300 text-left text-[10px] flex items-center justify-between transition-all"
+                      disabled={isThinking}
+                      className="group px-2.5 py-1.5 rounded-lg border border-white/5 bg-slate-900/40 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-slate-300 text-left text-[10px] flex items-center justify-between transition-all"
                     >
                       <span>Generate Milestones for Weather Station</span>
                       <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
@@ -236,8 +239,9 @@ export default function App() {
               <textarea
                 value={textInput}
                 onChange={e => setTextInput(e.target.value)}
-                placeholder="Ask FRIDAY anything..."
+                placeholder={isThinking ? "FRIDAY is thinking..." : "Ask FRIDAY anything..."}
                 rows={1}
+                disabled={isThinking}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -249,11 +253,12 @@ export default function App() {
                     }
                   }
                 }}
-                className="flex-1 bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400 resize-none min-h-[40px] max-h-[120px] leading-relaxed"
+                className="flex-1 bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed resize-none min-h-[40px] max-h-[120px] leading-relaxed"
               />
               <button
                 type="submit"
-                className="p-2.5 rounded-xl bg-cyan-500/20 border border-cyan-500/30 hover:bg-cyan-500/30 text-cyan-300 flex items-center justify-center transition-all h-[40px] w-[40px] flex-shrink-0"
+                disabled={isThinking}
+                className="p-2.5 rounded-xl bg-cyan-500/20 border border-cyan-500/30 hover:bg-cyan-500/30 disabled:opacity-50 disabled:cursor-not-allowed text-cyan-300 flex items-center justify-center transition-all h-[40px] w-[40px] flex-shrink-0"
               >
                 <Send className="w-4 h-4" />
               </button>
