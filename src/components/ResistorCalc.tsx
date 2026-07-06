@@ -1,16 +1,6 @@
 import React, { useState } from 'react';
 import { Zap, Calculator } from 'lucide-react';
-
-const RESISTOR_COLORS: Record<number, string> = {
-  0: '#000000', 1: '#8B4513', 2: '#FF0000', 3: '#FF8C00',
-  4: '#FFD700', 5: '#22C55E', 6: '#3B82F6', 7: '#7C3AED',
-  8: '#6B7280', 9: '#FFFFFF'
-};
-const RESISTOR_COLOR_NAMES: Record<number, string> = {
-  0: 'Black', 1: 'Brown', 2: 'Red', 3: 'Orange',
-  4: 'Yellow', 5: 'Green', 6: 'Blue', 7: 'Violet',
-  8: 'Grey', 9: 'White'
-};
+import { getResistorBands } from '../utils/resistor';
 
 interface CalcResult {
   resistance: number;
@@ -27,18 +17,15 @@ export const ResistorCalc: React.FC = () => {
   const calculate = () => {
     const v = parseFloat(voltage);
     const i = parseFloat(currentMa);
-    if (isNaN(v) || isNaN(i) || i <= 0) return;
+    if (isNaN(v) || isNaN(i) || i <= 0 || v <= 0) return;
 
     const resistance = v / (i / 1000);
-    const str = Math.round(resistance).toString();
-    const d1 = parseInt(str[0]);
-    const d2 = str.length > 1 ? parseInt(str[1]) : 0;
-    const multiplier = Math.max(0, str.length - 2);
+    const bands = getResistorBands(resistance);
 
     setResult({
       resistance: Math.round(resistance * 100) / 100,
-      bandColors: [RESISTOR_COLORS[d1], RESISTOR_COLORS[d2], RESISTOR_COLORS[multiplier]],
-      bandNames: [RESISTOR_COLOR_NAMES[d1], RESISTOR_COLOR_NAMES[d2], RESISTOR_COLOR_NAMES[multiplier]],
+      bandColors: bands.colors,
+      bandNames: bands.names,
       formula: `R = ${v}V ÷ ${i}mA = ${Math.round(resistance)}Ω`
     });
   };

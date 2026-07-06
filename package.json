@@ -5,14 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:all": "concurrently --names \"vite,whisper\" -c \"cyan,magenta\" \"npm run dev\" \"faster-whisper-server --host 127.0.0.1 --port 8000 tiny\"",
+    "server": "node server.js",
+    "dev:all": "concurrently --names \"vite,whisper,server\" -c \"cyan,magenta,green\" \"npm run dev\" \"faster-whisper-server --host 127.0.0.1 --port 8000 tiny\" \"npm run server\"",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "lucide-react": "^1.23.0",
+    "multer": "^2.2.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

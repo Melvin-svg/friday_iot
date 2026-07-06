@@ -255,28 +255,30 @@ export function chunkText(text: string, maxLength = 600): string[] {
   return chunks;
 }
 
-// Call Gemini Embeddings API
+// Call Gemini Embeddings API via Proxy
 export async function getEmbedding(text: string, apiKey: string): Promise<number[]> {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${apiKey}`,
+      'http://localhost:3000/api/embed',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'models/text-embedding-004',
-          content: { parts: [{ text }] },
-        }),
+        headers,
+        body: JSON.stringify({ text }),
       }
     );
 
     if (!response.ok) {
       const err = await response.json();
-      throw new Error(err.error?.message || 'Failed to generate embedding');
+      throw new Error(err.error || err.message || 'Failed to generate embedding');
     }
 
     const data = await response.json();
-    return data.embedding.values;
+    return data.embedding;
   } catch (error) {
     console.error('Embedding API Error:', error);
     throw error;
@@ -299,6 +301,9 @@ export function cosineSimilarity(vecA: number[], vecB: number[]): number {
   return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+// Cache for generated embeddings to avoid mutating raw chunks in place
+const embeddingCache = new Map<string, number[]>();
+
 // Search local chunks
 export async function searchChunks(
   query: string,
@@ -313,17 +318,20 @@ export async function searchChunks(
     
     const results = await Promise.all(
       chunks.map(async (chunk) => {
+        let embedding = chunk.embedding || embeddingCache.get(chunk.id);
+        
         // If chunk doesn't have an embedding, try to generate it now
-        if (!chunk.embedding) {
+        if (!embedding) {
           try {
-            chunk.embedding = await getEmbedding(chunk.text, apiKey);
+            embedding = await getEmbedding(chunk.text, apiKey);
+            embeddingCache.set(chunk.id, embedding);
           } catch (e) {
             console.error('Failed to embed chunk:', chunk.id, e);
             return { chunk, score: 0 };
           }
         }
         
-        const score = cosineSimilarity(queryEmbedding, chunk.embedding);
+        const score = cosineSimilarity(queryEmbedding, embedding);
         return { chunk, score };
       })
     );

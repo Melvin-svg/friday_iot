@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { SchemaType } from '@google/generative-ai';
 import type { FunctionDeclaration } from '@google/generative-ai';
 import type { DocumentChunk } from '../utils/rag';
 import { searchChunks, PRELOADED_ARDUINO_KNOWLEDGE } from '../utils/rag';
+import { getResistorBands } from '../utils/resistor';
 
 export interface Task {
   id: string;
@@ -145,42 +146,13 @@ const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   }
 ];
 
-function createGeminiModel(apiKey: string, modelName: string) {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  return genAI.getGenerativeModel({
-    model: modelName,
-    systemInstruction: SYSTEM_PROMPT,
-    tools: [{ functionDeclarations: TOOL_DECLARATIONS }]
-  });
-}
+
 
 function getTimestamp(): string {
   return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-// Resistor color band lookup
-const RESISTOR_COLORS: Record<number, string> = {
-  0: '#000000', 1: '#8B4513', 2: '#FF0000', 3: '#FF8C00',
-  4: '#FFD700', 5: '#22C55E', 6: '#3B82F6', 7: '#7C3AED',
-  8: '#6B7280', 9: '#FFFFFF'
-};
-const RESISTOR_COLOR_NAMES: Record<number, string> = {
-  0: 'Black', 1: 'Brown', 2: 'Red', 3: 'Orange',
-  4: 'Yellow', 5: 'Green', 6: 'Blue', 7: 'Violet',
-  8: 'Grey', 9: 'White'
-};
 
-function getResistorBands(ohms: number): { colors: string[]; names: string[] } {
-  if (ohms <= 0) return { colors: [], names: [] };
-  const str = Math.round(ohms).toString();
-  const d1 = parseInt(str[0]);
-  const d2 = str.length > 1 ? parseInt(str[1]) : 0;
-  const multiplier = Math.max(0, str.length - 2);
-  return {
-    colors: [RESISTOR_COLORS[d1], RESISTOR_COLORS[d2], RESISTOR_COLORS[multiplier]],
-    names: [RESISTOR_COLOR_NAMES[d1], RESISTOR_COLOR_NAMES[d2], RESISTOR_COLOR_NAMES[multiplier]]
-  };
-}
 
 function extractCodeBlock(text: string): { code: string; fileName?: string } | null {
   const regex = /```(?:[a-zA-Z0-9+#-]+)?\r?\n?([\s\S]*?)\r?\n?```/;
@@ -245,7 +217,6 @@ export function useFriday() {
 
   // Refs
   const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  const chatSessionRef = useRef<any>(null);
   const sendMessageRef = useRef<(text: string, isSpeech?: boolean) => void>(() => { }); // Bug 2 fix
   const voiceInitiatedRef = useRef<boolean>(false); // Track if current interaction was voice-initiated
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -397,9 +368,12 @@ export function useFriday() {
         }
         const base64Audio = btoa(binary);
 
-        const genAI = new GoogleGenerativeAI(currentApiKey);
         const prompt = 'Transcribe this audio recording exactly as spoken. Return ONLY the raw transcribed text with no extra commentary, labels, or formatting. If the audio is silent or unintelligible, return exactly: [NO_SPEECH]';
-        const audioData = { inlineData: { data: base64Audio, mimeType: audioBlob.type || 'audio/webm' } };
+
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (currentApiKey) {
+          headers['Authorization'] = `Bearer ${currentApiKey}`;
+        }
 
         // Try Gemini models to avoid quota/billing issues on other model families
         const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
@@ -407,22 +381,35 @@ export function useFriday() {
 
         for (const modelName of modelsToTry) {
           try {
-            console.log(`🎤 Trying transcription with ${modelName}...`);
-            const model = genAI.getGenerativeModel({ model: modelName });
-            const result = await model.generateContent([{ text: prompt }, audioData]);
-            transcript = result.response.text().trim();
+            console.log(`🎤 Trying transcription with ${modelName} via proxy...`);
+            const response = await fetch('http://localhost:3000/api/transcribe', {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                audio: base64Audio,
+                mimeType: audioBlob.type || 'audio/webm',
+                prompt,
+                modelName
+              })
+            });
+
+            if (!response.ok) {
+              const errData = await response.json();
+              throw new Error(errData.error || 'Failed to transcribe');
+            }
+
+            const data = await response.json();
+            transcript = data.text.trim();
             console.log(`🎤 Transcription succeeded with ${modelName}`);
             lastError = null;
             break; // Success! Stop trying
           } catch (err: any) {
             lastError = err;
             const isQuotaError = err.message?.includes('429') || err.message?.includes('quota') || err.message?.includes('rate');
-            const isModelNotFound = err.message?.includes('404') || err.message?.includes('not found');
-            if (isQuotaError || isModelNotFound) {
-              console.warn(`🎤 ${modelName} failed (${isQuotaError ? 'quota' : 'not found'}), trying next model...`);
+            if (isQuotaError) {
+              console.warn(`🎤 ${modelName} failed (quota), trying next model...`);
               continue;
             }
-            // Non-quota error — don't try other models
             throw err;
           }
         }
@@ -746,39 +733,59 @@ export function useFriday() {
 
     setMessages(prev => [...prev, userMsg]);
 
-    if (!apiKey) {
-      setMessages(prev => [...prev, {
-        id: 'msg_' + Math.random().toString(36).substr(2, 9),
-        role: 'model',
-        content: "I need a Gemini API Key to function. Click the Settings gear icon in the bottom footer, paste your key, and save!",
-        timestamp: getTimestamp()
-      }]);
-      return;
-    }
-
-    if (!chatSessionRef.current) {
-      setMessages(prev => [...prev, {
-        id: 'msg_' + Math.random().toString(36).substr(2, 9),
-        role: 'model',
-        content: "API session could not be established. Please check your API key in settings.",
-        timestamp: getTimestamp()
-      }]);
-      return;
-    }
-
     try {
       const thinkingId = 'msg_thinking_' + Math.random().toString(36).substr(2, 9);
       setMessages(prev => [...prev, { id: thinkingId, role: 'model', content: '...', timestamp: '' }]);
       setIsThinking(true); // Feature 3
 
-      let result = await chatSessionRef.current.sendMessage(text);
-      let functionCalls = result.response.functionCalls;
+      // Compile content history statelessly
+      let currentMessages: ChatMessage[] = [];
+      setMessages(prev => { currentMessages = prev.filter(m => m.id !== thinkingId); return prev; });
+
+      const contents: any[] = currentMessages.map(m => ({
+        role: m.role,
+        parts: [{ text: m.content }]
+      }));
+
+      // Call the proxy server
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (apiKeyRef.current) {
+        headers['Authorization'] = `Bearer ${apiKeyRef.current}`;
+      }
+
+      let fetchBody = {
+        model: geminiModel,
+        contents,
+        systemInstruction: SYSTEM_PROMPT,
+        tools: [{ functionDeclarations: TOOL_DECLARATIONS }]
+      };
+
+      let response = await fetch('http://localhost:3000/api/chat', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(fetchBody)
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to generate response');
+      }
+
+      let data = await response.json();
+      let responseText = data.text;
+      let functionCalls = data.functionCalls;
 
       let iterations = 0;
       while (functionCalls && functionCalls.length > 0 && iterations < 5) {
         iterations++;
-        const toolResponses = [];
 
+        // Append functionCalls to contents
+        contents.push({
+          role: 'model',
+          parts: functionCalls.map((fc: any) => ({ functionCall: fc }))
+        });
+
+        const toolResponses = [];
         for (const call of functionCalls) {
           const toolResult = await handleToolCall(call.name, call.args);
           toolResponses.push({
@@ -789,11 +796,33 @@ export function useFriday() {
           });
         }
 
-        result = await chatSessionRef.current.sendMessage(toolResponses);
-        functionCalls = result.response.functionCalls;
-      }
+        // Append tool responses to contents
+        contents.push({
+          role: 'user',
+          parts: toolResponses
+        });
 
-      const responseText = result.response.text();
+        // Re-call proxy with tool execution results in history
+        response = await fetch('http://localhost:3000/api/chat', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: geminiModel,
+            contents,
+            systemInstruction: SYSTEM_PROMPT,
+            tools: [{ functionDeclarations: TOOL_DECLARATIONS }]
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || 'Failed to generate response after tool call');
+        }
+
+        data = await response.json();
+        responseText = data.text;
+        functionCalls = data.functionCalls;
+      }
 
       setMessages(prev => prev.filter(m => m.id !== thinkingId));
       setIsThinking(false);
@@ -812,7 +841,7 @@ export function useFriday() {
       console.error('Gemini SendMessage Error:', error);
       setIsThinking(false);
       // Clean up the specific thinking placeholder
-      setMessages(prev => prev.filter(m => m.id !== 'msg_thinking' && !m.id.startsWith('msg_thinking_')));
+      setMessages(prev => prev.filter(m => !m.id.startsWith('msg_thinking')));
       setMessages(prev => [...prev, {
         id: 'msg_' + Math.random().toString(36).substr(2, 9),
         role: 'model',
@@ -820,7 +849,7 @@ export function useFriday() {
         timestamp: getTimestamp()
       }]);
     }
-  }, [apiKey, handleToolCall, speakText]);
+  }, [geminiModel, handleToolCall, speakText]);
 
   // Bug 2 fix: keep sendMessageRef always up to date
   useEffect(() => {
@@ -862,19 +891,7 @@ export function useFriday() {
     }
   }, []);
 
-  // Initialize Gemini Chat Session
-  useEffect(() => {
-    if (!apiKey) {
-      chatSessionRef.current = null;
-      return;
-    }
-    try {
-      const model = createGeminiModel(apiKey, geminiModel);
-      chatSessionRef.current = model.startChat();
-    } catch (e) {
-      console.error('Failed to init Gemini Chat Session:', e);
-    }
-  }, [apiKey, geminiModel]);
+
 
   // Feature 4: Keyboard shortcuts
   useEffect(() => {
@@ -927,15 +944,7 @@ export function useFriday() {
     });
     localStorage.removeItem('friday_messages');
     voiceInitiatedRef.current = false;
-    if (apiKey) {
-      try {
-        const model = createGeminiModel(apiKey, geminiModel);
-        chatSessionRef.current = model.startChat();
-      } catch (e) {
-        console.error('Failed to clear chat session:', e);
-      }
-    }
-  }, [apiKey, geminiModel]);
+  }, []);
 
   // Delete a specific archived conversation
   const deleteArchivedConversation = useCallback((convId: string) => {
