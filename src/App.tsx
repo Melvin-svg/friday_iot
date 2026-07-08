@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Sparkles, Send, Trash2, ArrowUpRight, Cpu } from 'lucide-react';
+import { Bot, Send, Trash2, Cpu, Plus } from 'lucide-react';
 import { useFriday } from './hooks/useFriday';
 import { VoiceOrb } from './components/VoiceOrb';
 import { ArduinoPinout } from './components/ArduinoPinout';
@@ -9,6 +9,8 @@ import { KnowledgeBase } from './components/KnowledgeBase';
 import { Settings } from './components/Settings';
 import { ResistorCalc } from './components/ResistorCalc';
 import { ConversationHistory } from './components/ConversationHistory';
+import { chunkText, getEmbedding, extractTextFromPDF } from './utils/rag';
+import type { DocumentChunk } from './utils/rag';
 export default function App() {
   const {
     apiKey, setApiKey,
@@ -17,7 +19,7 @@ export default function App() {
     autoSpeak, setAutoSpeak,
     useLocalWhisper, setUseLocalWhisper,
     localWhisperUrl, setLocalWhisperUrl,
-    messages, tasks, setTasks,
+    messages, setMessages, tasks, setTasks,
     activeBoard, setActiveBoard,
     generatedCode, setGeneratedCode, codeFileName,
     chunks, setChunks,
@@ -32,12 +34,21 @@ export default function App() {
   } = useFriday();
 
   const [textInput, setTextInput] = useState('');
+  const [showError, setShowError] = useState(true);
+  const [leftTab, setLeftTab] = useState<'resistor' | 'knowledge'>('resistor');
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
+
+  useEffect(() => {
+    if (recognitionError) {
+      setShowError(true);
+    }
+  }, [recognitionError]);
 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,9 +57,81 @@ export default function App() {
     setTextInput('');
   };
 
-  const handleSuggestedPrompt = (prompt: string) => {
-    sendMessage(prompt);
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const uploadedFiles = e.target.files;
+    if (!uploadedFiles || uploadedFiles.length === 0) return;
+    
+    if (!apiKey) {
+      const warningId = 'msg_' + Math.random().toString(36).substr(2, 9);
+      setMessages(prev => [...prev, {
+        id: warningId,
+        role: 'model',
+        content: '⚠️ Please set your Gemini API Key in settings before uploading documents.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }]);
+      return;
+    }
+
+    const file = uploadedFiles[0];
+    const systemMsgId = 'msg_' + Math.random().toString(36).substr(2, 9);
+    
+    // Add "Processing file..." system message
+    setMessages(prev => [...prev, {
+      id: systemMsgId,
+      role: 'model',
+      content: `⚙️ Processing and indexing "${file.name}" for RAG context...`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }]);
+
+    try {
+      let extractedText = '';
+      if (file.name.endsWith('.pdf')) {
+        extractedText = await extractTextFromPDF(file);
+      } else if (file.name.endsWith('.txt') || file.name.endsWith('.md')) {
+        extractedText = await file.text();
+      } else {
+        throw new Error('Unsupported format. Please upload .txt, .md or .pdf.');
+      }
+
+      if (!extractedText.trim()) {
+        throw new Error('File content is empty.');
+      }
+
+      const textChunks = chunkText(extractedText);
+      const fileId = 'file_' + Math.random().toString(36).substr(2, 9);
+      
+      const embeddedChunks: DocumentChunk[] = await Promise.all(
+        textChunks.map(async (text, index) => {
+          const embedding = await getEmbedding(text, apiKey);
+          return {
+            id: `${fileId}_chunk_${index}`,
+            fileName: file.name,
+            text,
+            embedding
+          };
+        })
+      );
+
+      setChunks(prev => [...prev, ...embeddedChunks]);
+      
+      // Update system message to success
+      setMessages(prev => prev.map(m => m.id === systemMsgId ? {
+        ...m,
+        content: `✅ "${file.name}" successfully indexed (${embeddedChunks.length} chunks). FRIDAY now has access to this document during chat!`
+      } : m));
+
+    } catch (err: any) {
+      console.error(err);
+      setMessages(prev => prev.map(m => m.id === systemMsgId ? {
+        ...m,
+        content: `❌ Failed to index "${file.name}": ${err.message || 'Unknown error'}`
+      } : m));
+    }
+
+    // Reset file input value so same file can be uploaded again
+    if (docInputRef.current) docInputRef.current.value = '';
   };
+
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col p-4 md:p-6 lg:p-8 gap-6 overflow-x-hidden">
@@ -92,59 +175,56 @@ export default function App() {
       </header>
 
       {/* Main Dashboard Grid */}
-      <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+      <main className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
 
-        {/* Left Column (Col-3) */}
-        <div className="lg:col-span-3 flex flex-col gap-6">
-          <ArduinoPinout activeBoard={activeBoard} setActiveBoard={setActiveBoard} />
-          <ResistorCalc />
-        </div>
-
-        {/* Center Column (Col-6) */}
-        <div className="lg:col-span-6 flex flex-col gap-6">
-          {/* Voice Orb Panel */}
-          <div className="glass-panel p-5 flex flex-col items-center justify-center min-h-[300px] relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-3 opacity-20 flex gap-1 items-center text-slate-500 pointer-events-none">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span className="text-[10px] font-mono">AI Voice Synthesis</span>
-            </div>
-
-            <VoiceOrb
-              isListening={isListening}
-              isSpeaking={isSpeaking}
-              isThinking={isThinking}
-              onClick={toggleListening}
-            />
-
-            {/* Mic Status Indicator */}
-            <div className="absolute top-0 left-0 p-3">
-              <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[9px] font-mono ${
-                micPermission === 'granted' 
-                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                  : micPermission === 'denied'
-                    ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-                    : micPermission === 'requesting'
-                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse'
-                      : 'bg-slate-500/10 text-slate-500 border border-white/5'
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${
-                  micPermission === 'granted' ? 'bg-emerald-500' 
-                  : micPermission === 'denied' ? 'bg-red-500'
-                  : micPermission === 'requesting' ? 'bg-amber-500 animate-pulse'
-                  : 'bg-slate-600'
-                }`} />
-                Mic: {micPermission === 'granted' ? 'Ready' : micPermission === 'denied' ? 'Blocked' : micPermission === 'requesting' ? 'Requesting...' : 'Click Orb'}
-              </div>
-            </div>
-
-            {recognitionError && (
-              <div className="mt-4 p-3 bg-red-950/20 border border-red-500/25 rounded-lg text-xs text-red-300 max-w-md text-center leading-relaxed">
-                <span className="font-semibold">{recognitionError}</span>
-              </div>
-            )}
+        {/* Column 1: Hardware References & Utilities (Col-4) */}
+        <div className="lg:col-span-4 flex flex-col gap-5">
+          {/* Box 1: Arduino Pinout Reference (Height 560px) */}
+          <div className="h-[560px] flex-shrink-0 overflow-hidden">
+            <ArduinoPinout activeBoard={activeBoard} setActiveBoard={setActiveBoard} />
           </div>
 
-          {/* Code + Serial */}
+          {/* Box 2: Tabbed Utilities Panel (Height 180px) */}
+          <div className="glass-panel flex flex-col h-[180px] overflow-hidden">
+            {/* Header Tabs */}
+            <div className="flex border-b border-white/5 bg-slate-950/20 px-4 py-2 justify-between items-center flex-shrink-0">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setLeftTab('resistor')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                    leftTab === 'resistor'
+                      ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                      : 'bg-transparent text-slate-400 border-transparent hover:bg-white/5'
+                  }`}
+                >
+                  Resistor Calc
+                </button>
+                <button
+                  onClick={() => setLeftTab('knowledge')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${
+                    leftTab === 'knowledge'
+                      ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                      : 'bg-transparent text-slate-400 border-transparent hover:bg-white/5'
+                  }`}
+                >
+                  Knowledge Base
+                </button>
+              </div>
+            </div>
+            
+            {/* Tab Contents */}
+            <div className="flex-1 overflow-auto">
+              {leftTab === 'resistor' ? (
+                <ResistorCalc flat={true} />
+              ) : (
+                <KnowledgeBase apiKey={apiKey} chunks={chunks} setChunks={setChunks} flat={true} />
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Column 2: Code Editor & Serial output (Col-4) */}
+        <div className="lg:col-span-4 flex flex-col gap-5">
           <ArduinoWorkspace
             code={generatedCode}
             setCode={setGeneratedCode}
@@ -153,12 +233,12 @@ export default function App() {
           />
         </div>
 
-        {/* Right Column (Col-3) */}
-        <div className="lg:col-span-3 flex flex-col gap-6">
-
-          {/* Chat Log */}
-          <div className="glass-panel p-4 flex flex-col h-[280px]">
-            <div className="flex justify-between items-center border-b border-white/5 pb-2 mb-3">
+        {/* Column 3: AI Assistant & Milestones (Col-4) */}
+        <div className="lg:col-span-4 flex flex-col gap-5">
+          {/* Box 5: Unified AI Assistant (Voice + Chat Log) (Height 370px) */}
+          <div className="glass-panel p-4 flex flex-col h-[370px] overflow-hidden flex-shrink-0">
+            {/* Header: Title + Clear Button */}
+            <div className="flex justify-between items-center border-b border-white/5 pb-2 mb-2 flex-shrink-0">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Interaction Log</h2>
               {messages.length > 0 && (
                 <button
@@ -170,6 +250,75 @@ export default function App() {
               )}
             </div>
 
+            {/* Nested Voice Core Bar */}
+            <div className="flex items-center justify-between min-h-[56px] py-1 border-b border-white/5 mb-3 flex-shrink-0 relative">
+              <div className="flex items-center gap-3">
+                <VoiceOrb
+                  isListening={isListening}
+                  isSpeaking={isSpeaking}
+                  isThinking={isThinking}
+                  onClick={toggleListening}
+                  compact={true}
+                />
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest leading-none mb-1">Voice Core</span>
+                  {isListening ? (
+                    <span className="text-amber-400 text-xs font-bold animate-pulse font-mono leading-none">
+                      Listening...
+                    </span>
+                  ) : isThinking ? (
+                    <span className="text-amber-300 text-xs font-bold animate-pulse font-mono leading-none">
+                      Thinking...
+                    </span>
+                  ) : isSpeaking ? (
+                    <span className="text-purple-400 text-xs font-bold animate-pulse font-mono leading-none">
+                      Speaking...
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 text-xs font-medium font-mono leading-none">
+                      Idle
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Mic Status Indicator */}
+              <div className="flex flex-col items-end gap-1">
+                <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[9px] font-mono font-bold ${
+                  micPermission === 'granted' 
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : micPermission === 'denied'
+                      ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                      : micPermission === 'requesting'
+                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse'
+                        : 'bg-slate-500/10 text-slate-500 border border-white/5'
+                }`}>
+                  <span className={`w-1 h-1 rounded-full ${
+                    micPermission === 'granted' ? 'bg-emerald-500' 
+                    : micPermission === 'denied' ? 'bg-red-500'
+                    : micPermission === 'requesting' ? 'bg-amber-500 animate-pulse'
+                    : 'bg-slate-600'
+                  }`} />
+                  {micPermission === 'granted' ? 'Active' : micPermission === 'denied' ? 'Blocked' : micPermission === 'requesting' ? 'Asking...' : 'Off'}
+                </div>
+                <span className="text-[8px] text-slate-500 font-mono">Space to Speak</span>
+              </div>
+
+              {recognitionError && showError && (
+                <div className="absolute inset-0 bg-red-950/95 border border-red-500/30 flex items-center justify-between px-3 py-1 text-[10px] text-red-300 z-20">
+                  <span className="font-semibold truncate pr-2" title={recognitionError}>{recognitionError}</span>
+                  <button 
+                    type="button"
+                    onClick={() => setShowError(false)} 
+                    className="text-[9px] uppercase font-bold text-red-400 hover:text-red-300 underline flex-shrink-0"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Message Area */}
             <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-sm mb-3">
               {messages.length > 0 ? (
                 messages.map((msg) => (
@@ -202,40 +351,29 @@ export default function App() {
                 <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-500 gap-2">
                   <Cpu className="w-6 h-6 text-slate-700 animate-spin" style={{ animationDuration: '6s' }} />
                   <span>Click the Orb or type below to prompt FRIDAY.</span>
-
-                  <div className="grid grid-cols-1 gap-1.5 w-full mt-4">
-                    <button
-                      onClick={() => handleSuggestedPrompt("FRIDAY, write an ESP32 web server script to toggle a pin")}
-                      disabled={isThinking}
-                      className="group px-2.5 py-1.5 rounded-lg border border-white/5 bg-slate-900/40 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-slate-300 text-left text-[10px] flex items-center justify-between transition-all"
-                    >
-                      <span>Write ESP32 LED Web Server C++</span>
-                      <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
-                    </button>
-                    <button
-                      onClick={() => handleSuggestedPrompt("FRIDAY, what resistor do I need for a 3.3V LED at 20mA?")}
-                      disabled={isThinking}
-                      className="group px-2.5 py-1.5 rounded-lg border border-white/5 bg-slate-900/40 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-slate-300 text-left text-[10px] flex items-center justify-between transition-all"
-                    >
-                      <span>Calculate LED Resistor (3.3V / 20mA)</span>
-                      <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
-                    </button>
-                    <button
-                      onClick={() => handleSuggestedPrompt("FRIDAY, add tasks for building my new ESP32 MQTT weather station")}
-                      disabled={isThinking}
-                      className="group px-2.5 py-1.5 rounded-lg border border-white/5 bg-slate-900/40 hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 hover:text-slate-300 text-left text-[10px] flex items-center justify-between transition-all"
-                    >
-                      <span>Generate Milestones for Weather Station</span>
-                      <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 text-cyan-400 transition-opacity" />
-                    </button>
-                  </div>
                 </div>
               )}
               <div ref={chatEndRef} />
             </div>
 
             {/* Input Form */}
-            <form onSubmit={handleTextSubmit} className="flex gap-2 mt-auto border-t border-white/5 pt-2 items-end">
+            <form onSubmit={handleTextSubmit} className="flex gap-2 mt-auto border-t border-white/5 pt-2 items-end flex-shrink-0">
+              <input
+                type="file"
+                ref={docInputRef}
+                onChange={handleDocumentUpload}
+                accept=".txt,.md,.pdf"
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => docInputRef.current?.click()}
+                disabled={isThinking}
+                className="p-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed text-slate-300 flex items-center justify-center transition-all h-[40px] w-[40px] flex-shrink-0"
+                title="Add Document (.txt, .md, .pdf)"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
               <textarea
                 value={textInput}
                 onChange={e => setTextInput(e.target.value)}
@@ -245,7 +383,6 @@ export default function App() {
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    // Programmatically trigger form submit
                     const form = e.currentTarget.form;
                     if (form) {
                       const event = new Event('submit', { cancelable: true, bubbles: true });
@@ -265,8 +402,10 @@ export default function App() {
             </form>
           </div>
 
-          <TaskManager tasks={tasks} setTasks={setTasks} />
-          <KnowledgeBase apiKey={apiKey} chunks={chunks} setChunks={setChunks} />
+          {/* Box 6: Task Manager (Height 370px) */}
+          <div className="h-[370px] flex-shrink-0 overflow-hidden">
+            <TaskManager tasks={tasks} setTasks={setTasks} />
+          </div>
         </div>
       </main>
 

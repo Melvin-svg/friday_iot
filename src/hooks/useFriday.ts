@@ -222,10 +222,15 @@ export function useFriday() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const apiKeyRef = useRef<string>(apiKey); // Track apiKey for transcription callback
+  const geminiModelRef = useRef<string>(geminiModel);
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  const tasksRef = useRef<Task[]>(tasks);
+  const chunksRef = useRef<DocumentChunk[]>(chunks);
+  const conversationHistoryRef = useRef<ArchivedConversation[]>(conversationHistory);
   
   // Silence detection refs & constants
   const SILENCE_THRESHOLD = 0.015;
-  const SILENCE_DURATION_MS = 3000; // 3 seconds
+  const SILENCE_DURATION_MS = 1500; // 1.5 seconds (reduced from 3s for faster voice recognition response)
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const silenceTimerRef = useRef<number | null>(null);
@@ -254,8 +259,13 @@ export function useFriday() {
     localStorage.setItem('friday_conversation_history', JSON.stringify(conversationHistory));
   }, [conversationHistory]);
 
-  // Keep apiKeyRef in sync
+  // Keep refs in sync
   useEffect(() => { apiKeyRef.current = apiKey; }, [apiKey]);
+  useEffect(() => { geminiModelRef.current = geminiModel; }, [geminiModel]);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
+  useEffect(() => { chunksRef.current = chunks; }, [chunks]);
+  useEffect(() => { conversationHistoryRef.current = conversationHistory; }, [conversationHistory]);
 
   // Persist generated code to localStorage
   useEffect(() => {
@@ -375,8 +385,10 @@ export function useFriday() {
           headers['Authorization'] = `Bearer ${currentApiKey}`;
         }
 
-        // Try Gemini models to avoid quota/billing issues on other model families
-        const modelsToTry = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+        // Try the preferred model first, then fall back to others to avoid quota/billing issues
+        const preferredModel = geminiModelRef.current || 'gemini-2.5-flash';
+        const fallbacks = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'].filter(m => m !== preferredModel);
+        const modelsToTry = [preferredModel, ...fallbacks];
         let lastError: any = null;
 
         for (const modelName of modelsToTry) {
@@ -655,19 +667,12 @@ export function useFriday() {
       }
 
       case 'listTasks': {
-        let currentTasks: Task[] = [];
-        setTasks(prev => { currentTasks = prev; return prev; });
-        return { tasks: currentTasks };
+        return { tasks: tasksRef.current };
       }
 
       case 'queryKnowledge': {
-        let currentChunks: DocumentChunk[] = [];
-        setChunks(prev => { currentChunks = prev; return prev; });
-        const searchPool = [...currentChunks, ...PRELOADED_ARDUINO_KNOWLEDGE];
-        let currentApiKey = '';
-        // Access apiKey from ref-like pattern
-        setApiKey(prev => { currentApiKey = prev; return prev; });
-        const results = await searchChunks(args.query, searchPool, currentApiKey, 3);
+        const searchPool = [...chunksRef.current, ...PRELOADED_ARDUINO_KNOWLEDGE];
+        const results = await searchChunks(args.query, searchPool, apiKeyRef.current, 3);
         const textPayload = results.map(r => `[From ${r.fileName}]: ${r.text}`).join('\n\n');
         return {
           resultsFound: results.length,
@@ -739,8 +744,9 @@ export function useFriday() {
       setIsThinking(true); // Feature 3
 
       // Compile content history statelessly
-      let currentMessages: ChatMessage[] = [];
-      setMessages(prev => { currentMessages = prev.filter(m => m.id !== thinkingId); return prev; });
+      const currentMessages = [...messagesRef.current, userMsg].filter(
+        m => !m.id.startsWith('msg_thinking') && m.content !== '...'
+      );
 
       const contents: any[] = currentMessages.map(m => ({
         role: m.role,
@@ -960,18 +966,9 @@ export function useFriday() {
   // Export all conversation history as JSON
   const exportConversationHistory = useCallback(() => {
     // Include current active conversation too
-    let allData: { activeConversation: ChatMessage[]; archivedConversations: ArchivedConversation[] };
-
-    // Get current messages synchronously
-    let currentMsgs: ChatMessage[] = [];
-    setMessages(prev => { currentMsgs = prev; return prev; });
-
-    let currentHistory: ArchivedConversation[] = [];
-    setConversationHistory(prev => { currentHistory = prev; return prev; });
-
-    allData = {
-      activeConversation: currentMsgs.filter(m => m.id !== 'msg_thinking'),
-      archivedConversations: currentHistory
+    const allData = {
+      activeConversation: messagesRef.current.filter(m => !m.id.startsWith('msg_thinking') && m.content !== '...'),
+      archivedConversations: conversationHistoryRef.current
     };
 
     const blob = new Blob([JSON.stringify(allData, null, 2)], { type: 'application/json' });
@@ -990,7 +987,7 @@ export function useFriday() {
     autoSpeak, setAutoSpeak,
     useLocalWhisper, setUseLocalWhisper,
     localWhisperUrl, setLocalWhisperUrl,
-    messages, tasks, setTasks,
+    messages, setMessages, tasks, setTasks,
     activeBoard, setActiveBoard,
     generatedCode, setGeneratedCode,
     codeFileName, setCodeFileName,

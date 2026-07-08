@@ -7,9 +7,10 @@ interface KnowledgeBaseProps {
   apiKey: string;
   chunks: DocumentChunk[];
   setChunks: React.Dispatch<React.SetStateAction<DocumentChunk[]>>;
+  flat?: boolean;
 }
 
-export const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ apiKey, chunks, setChunks }) => {
+export const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ apiKey, chunks, setChunks, flat = false }) => {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -111,17 +112,19 @@ export const KnowledgeBase: React.FC<KnowledgeBaseProps> = ({ apiKey, chunks, se
   };
 
   return (
-    <div className="glass-panel p-5 flex flex-col gap-4 h-full">
+    <div className={flat ? "p-4 flex flex-col gap-4 h-full" : "glass-panel p-5 flex flex-col gap-4 h-full"}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
-        <div className="flex items-center gap-2">
-          <FolderOpen className="w-5 h-5 text-cyan-400" />
-          <h2 className="text-base font-bold tracking-wide">Knowledge Documents</h2>
+      {!flat && (
+        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+          <div className="flex items-center gap-2">
+            <FolderOpen className="w-5 h-5 text-cyan-400" />
+            <h2 className="text-base font-bold tracking-wide">Knowledge Documents</h2>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-900 border border-white/5 text-slate-400 rounded-full">
+            {chunks.length} Chunks Indexed
+          </span>
         </div>
-        <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-900 border border-white/5 text-slate-400 rounded-full">
-          {chunks.length} Chunks Indexed
-        </span>
-      </div>
+      )}
 
       {/* Info Warning */}
       {!apiKey && (

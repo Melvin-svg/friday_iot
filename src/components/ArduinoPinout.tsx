@@ -148,12 +148,12 @@ export const ArduinoPinout: React.FC<ArduinoPinoutProps> = ({ activeBoard, setAc
   };
 
   return (
-    <div className="glass-panel p-5 flex flex-col gap-4 h-full">
+    <div className="glass-panel p-4 flex flex-col gap-3 h-full overflow-hidden">
       {/* Board Selector Header */}
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
+      <div className="flex items-center justify-between border-b border-white/5 pb-2">
         <div className="flex items-center gap-2">
           <Cpu className={`w-5 h-5 ${activeBoard === 'uno' ? 'text-cyan-400' : 'text-amber-500 animate-pulse'}`} />
-          <h2 className="text-base font-bold tracking-wide">Board References</h2>
+          <h2 className="text-sm font-bold tracking-wide">Board References</h2>
         </div>
         <div className="flex gap-1.5">
           {(['uno', 'esp32', 'esp8266'] as const).map((b) => (
@@ -176,26 +176,26 @@ export const ArduinoPinout: React.FC<ArduinoPinoutProps> = ({ activeBoard, setAc
       </div>
 
       {/* Voltage Warning Alert */}
-      <div className={`p-3 rounded-lg border flex gap-2.5 items-start text-xs ${
+      <div className={`p-1.5 rounded-lg border flex gap-2 items-start text-[11px] ${
         board.voltage.includes('3.3V') 
           ? 'bg-red-950/20 text-red-300 border-red-500/25' 
           : 'bg-cyan-950/20 text-cyan-300 border-cyan-500/25'
       }`}>
-        <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+        <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
         <div>
           <span className="font-bold block mb-0.5">{board.name} ({board.voltage})</span>
-          <span className="opacity-80 leading-relaxed">{board.warning}</span>
+          <span className="opacity-80 leading-normal">{board.warning}</span>
         </div>
       </div>
 
       {/* Microcontroller Schematic Simulator */}
-      <div className="board-container p-4 flex flex-col items-center justify-center min-h-[360px] relative">
-        <div className="text-[10px] uppercase font-bold text-slate-500 mb-2 tracking-widest">
+      <div className="board-container p-2 flex flex-col items-center justify-center min-h-[250px] relative flex-shrink-0">
+        <div className="text-[9px] uppercase font-bold text-slate-500 mb-1 tracking-widest">
           Click Pin to inspect spec
         </div>
         
         {/* PCB Board Outline */}
-        <div className="relative border border-slate-700 bg-slate-900 w-full max-w-[280px] rounded-xl py-4 px-2 shadow-2xl flex justify-between gap-1 items-stretch">
+        <div className="relative border border-slate-700 bg-slate-900 w-full max-w-[280px] rounded-xl py-2 px-1.5 shadow-2xl flex justify-between gap-1 items-stretch">
           
           {/* Microcontroller Chip Drawing in background */}
           <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 border border-slate-700 bg-slate-950/60 rounded p-3 w-16 h-28 flex flex-col items-center justify-between text-center pointer-events-none opacity-40">
@@ -207,7 +207,7 @@ export const ArduinoPinout: React.FC<ArduinoPinoutProps> = ({ activeBoard, setAc
           </div>
 
           {/* Left Pin Header Column */}
-          <div className="flex flex-col gap-1.5 z-10 w-24">
+          <div className="flex flex-col gap-1 z-10 w-24">
             {board.pinsLeft.map((pin, i) => (
               <button
                 key={`left-${i}`}
@@ -224,7 +224,7 @@ export const ArduinoPinout: React.FC<ArduinoPinoutProps> = ({ activeBoard, setAc
           </div>
 
           {/* Right Pin Header Column */}
-          <div className="flex flex-col gap-1.5 z-10 w-24 items-end text-right">
+          <div className="flex flex-col gap-1 z-10 w-24 items-end text-right">
             {board.pinsRight.map((pin, i) => (
               <button
                 key={`right-${i}`}
@@ -243,22 +243,22 @@ export const ArduinoPinout: React.FC<ArduinoPinoutProps> = ({ activeBoard, setAc
       </div>
 
       {/* Pin Detail Overlay */}
-      <div className="min-h-[100px] border border-white/5 bg-slate-950/40 rounded-xl p-3 flex flex-col justify-center">
+      <div className="min-h-[80px] border border-white/5 bg-slate-950/40 rounded-xl p-2.5 flex flex-col justify-center">
         {selectedPin ? (
           <div className="flex flex-col gap-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Pin Specifications</span>
-              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase ${getPinColorClass(selectedPin.type)}`}>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pin Specifications</span>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${getPinColorClass(selectedPin.type)}`}>
                 {selectedPin.type}
               </span>
             </div>
-            <h3 className="text-sm font-bold text-amber-300 font-mono mt-1">{selectedPin.label} - {selectedPin.name}</h3>
-            <p className="text-xs text-slate-400 leading-relaxed mt-1">{selectedPin.description}</p>
+            <h3 className="text-xs font-bold text-amber-300 font-mono mt-0.5">{selectedPin.label} - {selectedPin.name}</h3>
+            <p className="text-[11px] text-slate-400 leading-normal mt-0.5">{selectedPin.description}</p>
           </div>
         ) : (
-          <div className="text-center text-xs text-slate-500 flex flex-col items-center gap-1.5">
-            <ShieldCheck className="w-5 h-5 text-slate-600" />
-            <span>Select a Pin on the board schematic to check pin assignments, interfaces, and warning parameters.</span>
+          <div className="text-center text-xs text-slate-500 flex flex-col items-center gap-1">
+            <ShieldCheck className="w-4 h-4 text-slate-600" />
+            <span>Select a Pin on the board schematic to check pin assignments.</span>
           </div>
         )}
       </div>

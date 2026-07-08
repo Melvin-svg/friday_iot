@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "node server.js",
+    "server": "node server.cjs",
     "dev:all": "concurrently --names \"vite,whisper,server\" -c \"cyan,magenta,green\" \"npm run dev\" \"faster-whisper-server --host 127.0.0.1 --port 8000 tiny\" \"npm run server\"",
     "build": "tsc -b && vite build",
     "lint": "oxlint",

@@ -46,7 +46,7 @@ export const TaskManager: React.FC<TaskManagerProps> = ({ tasks, setTasks }) => 
   const completedCount = tasks.filter(t => t.completed).length;
 
   return (
-    <div className="glass-panel p-5 flex flex-col gap-4 h-full">
+    <div className="glass-panel p-5 flex flex-col gap-4 h-full overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/5 pb-3">
         <div className="flex items-center gap-2">

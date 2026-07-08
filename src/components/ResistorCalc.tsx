@@ -9,7 +9,11 @@ interface CalcResult {
   formula: string;
 }
 
-export const ResistorCalc: React.FC = () => {
+interface ResistorCalcProps {
+  flat?: boolean;
+}
+
+export const ResistorCalc: React.FC<ResistorCalcProps> = ({ flat = false }) => {
   const [voltage, setVoltage] = useState('5');
   const [currentMa, setCurrentMa] = useState('20');
   const [result, setResult] = useState<CalcResult | null>(null);
@@ -31,17 +35,19 @@ export const ResistorCalc: React.FC = () => {
   };
 
   return (
-    <div className="glass-panel p-5 flex flex-col gap-4">
+    <div className={flat ? "p-3 flex flex-col gap-3" : "glass-panel p-5 flex flex-col gap-4"}>
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-white/5 pb-3">
-        <div className="flex items-center gap-2">
-          <Zap className="w-5 h-5 text-amber-400" />
-          <h2 className="text-base font-bold tracking-wide">Resistor Calculator</h2>
+      {!flat && (
+        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+          <div className="flex items-center gap-2">
+            <Zap className="w-5 h-5 text-amber-400" />
+            <h2 className="text-base font-bold tracking-wide">Resistor Calculator</h2>
+          </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-900 border border-white/5 text-slate-400 rounded-full">
+            Ohm's Law
+          </span>
         </div>
-        <span className="text-[10px] font-mono px-2 py-0.5 bg-slate-900 border border-white/5 text-slate-400 rounded-full">
-          Ohm's Law
-        </span>
-      </div>
+      )}
 
       {/* Inputs */}
       <div className="flex gap-2">
